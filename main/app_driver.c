@@ -13,10 +13,6 @@
 #include <esp_rmaker_core.h>
 #include <esp_rmaker_standard_types.h> 
 #include <esp_rmaker_standard_params.h> 
-#include "driver/gpio.h"
-#include "esp_log.h"
-#include "freertos/task.h"
-
 
 #include <ultrasonic.h>
 #include <esp_err.h>
@@ -31,7 +27,6 @@
 // This is the GPIO on which the power will be set 
 #define OUTPUT_GPIO    19 
 
-
 static TimerHandle_t sensor_timer;
 
 #define DEFAULT_SATURATION  100
@@ -40,123 +35,69 @@ static TimerHandle_t sensor_timer;
 #define WIFI_RESET_BUTTON_TIMEOUT       3
 #define FACTORY_RESET_BUTTON_TIMEOUT    10
 
-//define US sensor set up
-#define TRIGGER_GPIO 5
-#define ECHO_GPIO 18
-#define MAX_DISTANCE_CM 500
-extern esp_rmaker_device_t *US_sensor_device;
-extern esp_rmaker_param_t *distance_param;
-
-//declare bin capacity params
-float bin_height = 100; //in cm, to change
-int notif_counter = 1;
-static char cap_alert[] = "Recycling Capacity above 80% !!";
-static char max_cap_warning[] = "Capacity at 95% ... PLEASE EMPTY !!!";
-
-
 static uint16_t g_hue;
 static uint16_t g_saturation = DEFAULT_SATURATION;
 static uint16_t g_value = DEFAULT_BRIGHTNESS;
 static float g_temperature;
 
-
-
-
-
-//updating rainmaker
 static void app_sensor_update(TimerHandle_t handle)
 {
-   // ultrasonic sensor function
+    static float delta = 0.5;
+    g_temperature += delta;
+    if (g_temperature > 99) {
+        delta = -0.5;
+    } else if (g_temperature < 1) {
+        delta = 0.5;
+    }
+    g_hue = (100 - g_temperature) * 2;
+    ws2812_led_set_hsv(g_hue, g_saturation, g_value);
+    esp_rmaker_param_update_and_report(
+            esp_rmaker_device_get_param_by_type(US_sensor_device, ESP_RMAKER_PARAM_DISTance),
+            esp_rmaker_float(g_temperature));
+}
+
+/* float app_get_current_temperature()
+{
+    return g_temperature;
+} */
+
+void ultrasonic_test(void *pvParameters)
+{
     ultrasonic_sensor_t sensor = {
         .trigger_pin = TRIGGER_GPIO,
         .echo_pin = ECHO_GPIO
     };
-    ultrasonic_init(&sensor); 
 
-    //testing sensor and getting distance
-    float distance;
-    esp_err_t res = ultrasonic_measure(&sensor, MAX_DISTANCE_CM, &distance);
-    if (res != ESP_OK)
-    {
-        printf("Error %d: ", res);
-        switch (res)
-        {
-            case ESP_ERR_ULTRASONIC_PING:
-                printf("Cannot ping (device is in invalid state)\n");
-                break;
-            case ESP_ERR_ULTRASONIC_PING_TIMEOUT:
-                printf("Ping timeout (no device found)\n");
-                break;
-            case ESP_ERR_ULTRASONIC_ECHO_TIMEOUT:
-                printf("Echo timeout (i.e. distance too big)\n");
-                break;
-            default:
-                printf("%s\n", esp_err_to_name(res));
-        }
-    }
-    else
-        printf("Distance: %0.04f cm\n", distance*100);
-    
-    //capacity calculation
-    float max_height = bin_height-10;
-    distance = distance*100;
-    float capacity = ((max_height-distance)/(max_height))*100;
-    //float cap_round = round(capacity);
+    ultrasonic_init(&sensor);
 
-    //udpating of capacity
-    esp_rmaker_param_update_and_report(
-            esp_rmaker_device_get_param_by_name(US_sensor_device, "Capacity/%"),
-            esp_rmaker_float(capacity));
-    
-    //capacity notification cases
-    if (capacity >= 80)
+    while (true)
     {
-        if (capacity < 95) 
+        float distance;
+        esp_err_t res = ultrasonic_measure(&sensor, MAX_DISTANCE_CM, &distance);
+        if (res != ESP_OK)
         {
-            switch (notif_counter)
+            printf("Error %d: ", res);
+            switch (res)
             {
-            case 1:
-                // send notif
-                esp_rmaker_raise_alert (cap_alert);
-
-                notif_counter+= 1;
-                break;
-
-            case 10:
-                //send notif
-                esp_rmaker_raise_alert (cap_alert);
-                notif_counter = -9;
-                break;
-            
-            default:
-                notif_counter += 1;
-                break;
+                case ESP_ERR_ULTRASONIC_PING:
+                    printf("Cannot ping (device is in invalid state)\n");
+                    break;
+                case ESP_ERR_ULTRASONIC_PING_TIMEOUT:
+                    printf("Ping timeout (no device found)\n");
+                    break;
+                case ESP_ERR_ULTRASONIC_ECHO_TIMEOUT:
+                    printf("Echo timeout (i.e. distance too big)\n");
+                    break;
+                default:
+                    printf("%s\n", esp_err_to_name(res));
             }
-            printf("notif count: %i \n", notif_counter);
         }
         else
-        {    
-            switch (notif_counter)
-            {
-            case 10:
-                //send notif
-                esp_rmaker_raise_alert (max_cap_warning);
-                notif_counter = 5;
-                break;
+            printf("Distance: %0.04f cm\n", distance*100);
 
-            default:
-                notif_counter += 1;
-                break;
-            }
-        }
-
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
-
-    //delay update loop
-    vTaskDelay(pdMS_TO_TICKS(2000));
 }
-
-
 
 esp_err_t app_sensor_init(void)
 {

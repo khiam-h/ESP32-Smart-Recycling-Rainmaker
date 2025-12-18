@@ -24,10 +24,7 @@
 
 static const char *TAG = "app_main";
 
-//declare device and param header
 esp_rmaker_device_t *US_sensor_device;
-esp_rmaker_param_t *distance_param;
-
 
 void app_main()
 {
@@ -54,7 +51,7 @@ void app_main()
     esp_rmaker_config_t rainmaker_cfg = {
         .enable_time_sync = false,
     };
-    esp_rmaker_node_t *node = esp_rmaker_node_init(&rainmaker_cfg, "ESP RainMaker Device", "Recycling Capacity");
+    esp_rmaker_node_t *node = esp_rmaker_node_init(&rainmaker_cfg, "ESP RainMaker Device", "US Dist Sensor");
     if (!node) {
         ESP_LOGE(TAG, "Could not initialise node. Aborting!!!");
         vTaskDelay(5000/portTICK_PERIOD_MS);
@@ -62,14 +59,13 @@ void app_main()
     }
 
     /* Create a device and add the relevant parameters to it */
-    US_sensor_device = esp_rmaker_device_create("Recycling Capacity", NULL, NULL); 
+    US_sensor_device = esp_rmaker_device_create("US Dist Sensor", NULL, ultrasonic_test());
     esp_rmaker_node_add_device(node, US_sensor_device);
 
-    //create params
-    esp_rmaker_param_t *distance_param = esp_rmaker_param_create("Capacity/%",  NULL, 
+    //adding params
+    esp_rmaker_param_t *distance_param = esp_rmaker_param_create("Distance", ESP_RMAKER_PARAM_DISTANCE,
                                                                  esp_rmaker_float(0.0), PROP_FLAG_READ);
     esp_rmaker_device_add_param(US_sensor_device, distance_param);
-    esp_rmaker_device_assign_primary_param(US_sensor_device, distance_param);
 
     //create task
     //xTaskCreate(distance_task, "distance_task", 4096, distance_param, 5, NULL);

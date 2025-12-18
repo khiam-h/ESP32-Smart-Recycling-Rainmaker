@@ -11,13 +11,10 @@
 #include <ultrasonic.h>
 
 #define DEFAULT_DIST 0.0
-#define REPORTING_PERIOD    0.01 /* Seconds */
+#define REPORTING_PERIOD    10 /* Seconds */
 
 extern esp_rmaker_device_t *US_sensor_device;
-extern esp_rmaker_param_t *distance_param;
-
 
 void app_driver_init(void);
 //float app_get_current_temperature();
-//void ultrasonic_test();
-float get_distance();
+float ultrasonic_test();
